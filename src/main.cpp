@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 
 namespace {
@@ -37,8 +38,25 @@ bool DigitalPressed(bool momentary, const ButtonMemory& m) {
   return momentary || m.latched;
 }
 
-constexpr ImU32 kBodyFill    = IM_COL32(0x28,0x2C,0x38,0xFF);
-constexpr ImU32 kBodyBorder  = IM_COL32(0x3A,0x3F,0x4D,0xB0);
+std::string ScreenStatusText(const std::string& error, bool ready) {
+  if (error.empty()) {
+    return ready ? "READY" : "DISCONNECTED";
+  }
+  if (error.find("Permission denied") != std::string::npos) {
+    return "ERROR uinput permission";
+  }
+  if (error.find("No such file") != std::string::npos) {
+    return "ERROR uinput missing";
+  }
+  if (error.find("uinput") != std::string::npos) {
+    return "ERROR uinput";
+  }
+  return "ERROR device";
+}
+
+constexpr ImU32 kBodyFill    = IM_COL32(0x24,0x28,0x31,0xFF);
+constexpr ImU32 kBodyTop     = IM_COL32(0x31,0x36,0x42,0xA0);
+constexpr ImU32 kBodyBorder  = IM_COL32(0x47,0x4D,0x5A,0xD0);
 constexpr ImU32 kBodyShadow1 = IM_COL32(0x00,0x00,0x00,0x40);
 constexpr ImU32 kBodyShadow2 = IM_COL32(0x00,0x00,0x00,0x1C);
 
@@ -48,8 +66,8 @@ constexpr ImU32 kStickKnob   = IM_COL32(0x55,0x5B,0x68,0xFF);
 constexpr ImU32 kStickActive = IM_COL32(0x4A,0xDE,0x80,0xFF);
 constexpr ImU32 kStickCross  = IM_COL32(0x2E,0x33,0x40,0x60);
 
-constexpr ImU32 kBtnFill     = IM_COL32(0x33,0x38,0x45,0xFF);
-constexpr ImU32 kBtnBorder   = IM_COL32(0x42,0x48,0x56,0xFF);
+constexpr ImU32 kBtnFill     = IM_COL32(0x36,0x3B,0x47,0xFF);
+constexpr ImU32 kBtnBorder   = IM_COL32(0x50,0x57,0x66,0xFF);
 constexpr ImU32 kBtnActive   = IM_COL32(0x4A,0xDE,0x80,0xFF);
 constexpr ImU32 kBtnActiveBd = IM_COL32(0x6E,0xF0,0x9A,0xFF);
 
@@ -68,6 +86,7 @@ constexpr ImU32 kFaceX = IM_COL32(0x4B,0x8B,0xFF,0xFF);
 constexpr ImU32 kFaceY = IM_COL32(0xFF,0xD4,0x4B,0xFF);
 
 constexpr ImU32 kScrBg    = IM_COL32(0x0E,0x10,0x16,0xFF);
+constexpr ImU32 kScrBand  = IM_COL32(0x15,0x19,0x22,0xFF);
 constexpr ImU32 kScrBdr   = IM_COL32(0x2E,0x33,0x40,0xFF);
 constexpr ImU32 kBarBg    = IM_COL32(0x18,0x1C,0x24,0xFF);
 constexpr ImU32 kBarFill  = IM_COL32(0x4A,0xDE,0x80,0xFF);
@@ -83,10 +102,13 @@ constexpr ImU32 kTextAcc = IM_COL32(0x4A,0xDE,0x80,0xFF);
 constexpr ImU32 kTextScr = IM_COL32(0x60,0xE8,0x80,0xFF);
 constexpr ImU32 kTextScrD= IM_COL32(0x50,0x55,0x62,0xFF);
 
-constexpr float kW=930, kH=740, kBW=850, kBH=640;
-constexpr float kStR=68, kKnR=14, kDA=44, kDR=9, kFR=24, kFS=33;
-constexpr float kLC=188, kRC=662, kUY=272, kLY=455;
-constexpr float kSW=370, kSH=110;
+constexpr float kScale=0.86f;
+constexpr float kW=930*kScale, kH=740*kScale, kBW=850*kScale, kBH=640*kScale;
+constexpr float kStR=68*kScale, kKnR=14*kScale, kDA=44*kScale, kDR=9*kScale, kFR=24*kScale, kFS=33*kScale;
+constexpr float kLC=188*kScale, kRC=662*kScale, kUY=272*kScale, kLY=455*kScale;
+constexpr float kSW=370*kScale, kSH=126*kScale;
+
+constexpr float S(float v) { return v * kScale; }
 
 void FillRoundRectMask(Display* dpy, Pixmap pm, GC gc, int x, int y, int w, int h, int r) {
   if (w <= 0 || h <= 0) return;
@@ -113,14 +135,14 @@ void SetWindowShape(SDL_Window* sdl_win, int mx, int my, int mw, int mh) {
   XSetForeground(dpy, gc, 1);
 
   // 原生窗口轮廓：顶部肩键区 + 中央主体 + 左右握把 + 底部控制条。
-  FillRoundRectMask(dpy, pm, gc, mx + 24, my, 300, 108, 30);
-  FillRoundRectMask(dpy, pm, gc, mx + mw - 324, my, 300, 108, 30);
-  FillRoundRectMask(dpy, pm, gc, mx + 220, my + 32, mw - 440, 116, 38);
-  FillRoundRectMask(dpy, pm, gc, mx + 54, my + 82, mw - 108, 374, 70);
-  XFillArc(dpy, pm, gc, mx + 10, my + 278, 338, 338, 0, 360 * 64);
-  XFillArc(dpy, pm, gc, mx + mw - 348, my + 278, 338, 338, 0, 360 * 64);
-  FillRoundRectMask(dpy, pm, gc, mx + 112, my + 414, mw - 224, 176, 62);
-  FillRoundRectMask(dpy, pm, gc, mx + 64, my + mh - 78, mw - 128, 66, 30);
+  FillRoundRectMask(dpy, pm, gc, mx + (int)S(24), my, (int)S(300), (int)S(108), (int)S(30));
+  FillRoundRectMask(dpy, pm, gc, mx + mw - (int)S(324), my, (int)S(300), (int)S(108), (int)S(30));
+  FillRoundRectMask(dpy, pm, gc, mx + (int)S(220), my + (int)S(32), mw - (int)S(440), (int)S(116), (int)S(38));
+  FillRoundRectMask(dpy, pm, gc, mx + (int)S(54), my + (int)S(82), mw - (int)S(108), (int)S(374), (int)S(70));
+  XFillArc(dpy, pm, gc, mx + (int)S(10), my + (int)S(278), (int)S(338), (int)S(338), 0, 360 * 64);
+  XFillArc(dpy, pm, gc, mx + mw - (int)S(348), my + (int)S(278), (int)S(338), (int)S(338), 0, 360 * 64);
+  FillRoundRectMask(dpy, pm, gc, mx + (int)S(112), my + (int)S(414), mw - (int)S(224), (int)S(176), (int)S(62));
+  FillRoundRectMask(dpy, pm, gc, mx + (int)S(64), my + mh - (int)S(78), mw - (int)S(128), (int)S(66), (int)S(30));
 
   XShapeCombineMask(dpy, win, ShapeBounding, 0, 0, pm, ShapeSet);
   XShapeCombineMask(dpy, win, ShapeInput, 0, 0, pm, ShapeSet);
@@ -139,14 +161,14 @@ bool InCircle(const ImVec2& p, const ImVec2& c, float r) {
 
 bool InGamepadShape(const ImVec2& p, const ImVec2& mn, const ImVec2& mx) {
   const float w = mx.x - mn.x, h = mx.y - mn.y;
-  return InRect(p, mn.x + 24, mn.y, 300, 108) ||
-         InRect(p, mn.x + w - 324, mn.y, 300, 108) ||
-         InRect(p, mn.x + 220, mn.y + 32, w - 440, 116) ||
-         InRect(p, mn.x + 54, mn.y + 82, w - 108, 374) ||
-         InCircle(p, ImVec2(mn.x + 179, mn.y + 447), 169) ||
-         InCircle(p, ImVec2(mn.x + w - 179, mn.y + 447), 169) ||
-         InRect(p, mn.x + 112, mn.y + 414, w - 224, 176) ||
-         InRect(p, mn.x + 64, mn.y + h - 78, w - 128, 66);
+  return InRect(p, mn.x + S(24), mn.y, S(300), S(108)) ||
+         InRect(p, mn.x + w - S(324), mn.y, S(300), S(108)) ||
+         InRect(p, mn.x + S(220), mn.y + S(32), w - S(440), S(116)) ||
+         InRect(p, mn.x + S(54), mn.y + S(82), w - S(108), S(374)) ||
+         InCircle(p, ImVec2(mn.x + S(179), mn.y + S(447)), S(169)) ||
+         InCircle(p, ImVec2(mn.x + w - S(179), mn.y + S(447)), S(169)) ||
+         InRect(p, mn.x + S(112), mn.y + S(414), w - S(224), S(176)) ||
+         InRect(p, mn.x + S(64), mn.y + h - S(78), w - S(128), S(66));
 }
 
 ImVec2 StickFromMouse(const ImVec2& c, const ImVec2& m, float r, float* x, float* y) {
@@ -166,26 +188,28 @@ void DrawArrow(ImDrawList* d, const ImVec2& c, float s, int dir, ImU32 col) {
 
 void DrawBodyLayer(ImDrawList* d, const ImVec2& mn, const ImVec2& mx, ImU32 col, float ox, float oy) {
   const float h = mx.y - mn.y;
-  d->AddRectFilled(ImVec2(mn.x+24+ox,mn.y+oy),ImVec2(mn.x+324+ox,mn.y+108+oy),col,30.0f);
-  d->AddRectFilled(ImVec2(mx.x-324+ox,mn.y+oy),ImVec2(mx.x-24+ox,mn.y+108+oy),col,30.0f);
-  d->AddRectFilled(ImVec2(mn.x+220+ox,mn.y+32+oy),ImVec2(mx.x-220+ox,mn.y+148+oy),col,38.0f);
-  d->AddRectFilled(ImVec2(mn.x+54+ox,mn.y+82+oy),ImVec2(mx.x-54+ox,mn.y+456+oy),col,70.0f);
-  d->AddCircleFilled(ImVec2(mn.x+179+ox,mn.y+447+oy),169.0f,col,80);
-  d->AddCircleFilled(ImVec2(mx.x-179+ox,mn.y+447+oy),169.0f,col,80);
-  d->AddRectFilled(ImVec2(mn.x+112+ox,mn.y+414+oy),ImVec2(mx.x-112+ox,mn.y+590+oy),col,62.0f);
-  d->AddRectFilled(ImVec2(mn.x+64+ox,mn.y+h-78+oy),ImVec2(mx.x-64+ox,mn.y+h-12+oy),col,30.0f);
+  d->AddRectFilled(ImVec2(mn.x+S(24)+ox,mn.y+oy),ImVec2(mn.x+S(324)+ox,mn.y+S(108)+oy),col,S(30));
+  d->AddRectFilled(ImVec2(mx.x-S(324)+ox,mn.y+oy),ImVec2(mx.x-S(24)+ox,mn.y+S(108)+oy),col,S(30));
+  d->AddRectFilled(ImVec2(mn.x+S(220)+ox,mn.y+S(32)+oy),ImVec2(mx.x-S(220)+ox,mn.y+S(148)+oy),col,S(38));
+  d->AddRectFilled(ImVec2(mn.x+S(54)+ox,mn.y+S(82)+oy),ImVec2(mx.x-S(54)+ox,mn.y+S(456)+oy),col,S(70));
+  d->AddCircleFilled(ImVec2(mn.x+S(179)+ox,mn.y+S(447)+oy),S(169),col,80);
+  d->AddCircleFilled(ImVec2(mx.x-S(179)+ox,mn.y+S(447)+oy),S(169),col,80);
+  d->AddRectFilled(ImVec2(mn.x+S(112)+ox,mn.y+S(414)+oy),ImVec2(mx.x-S(112)+ox,mn.y+S(590)+oy),col,S(62));
+  d->AddRectFilled(ImVec2(mn.x+S(64)+ox,mn.y+h-S(78)+oy),ImVec2(mx.x-S(64)+ox,mn.y+h-S(12)+oy),col,S(30));
 }
 
 void DrawBody(ImDrawList* d, const ImVec2& mn, const ImVec2& mx) {
-  DrawBodyLayer(d,mn,mx,kBodyShadow1,4.0f,6.0f);
-  DrawBodyLayer(d,mn,mx,kBodyShadow2,8.0f,10.0f);
+  DrawBodyLayer(d,mn,mx,kBodyShadow1,S(4),S(6));
+  DrawBodyLayer(d,mn,mx,kBodyShadow2,S(8),S(10));
   DrawBodyLayer(d,mn,mx,kBodyFill,0.0f,0.0f);
-  d->AddRect(ImVec2(mn.x+24,mn.y),ImVec2(mn.x+324,mn.y+108),kBodyBorder,30.0f,0,2.0f);
-  d->AddRect(ImVec2(mx.x-324,mn.y),ImVec2(mx.x-24,mn.y+108),kBodyBorder,30.0f,0,2.0f);
-  d->AddRect(ImVec2(mn.x+54,mn.y+82),ImVec2(mx.x-54,mn.y+456),kBodyBorder,70.0f,0,2.2f);
-  d->AddCircle(ImVec2(mn.x+179,mn.y+447),169.0f,kBodyBorder,80,2.2f);
-  d->AddCircle(ImVec2(mx.x-179,mn.y+447),169.0f,kBodyBorder,80,2.2f);
-  d->AddRect(ImVec2(mn.x+64,mx.y-78),ImVec2(mx.x-64,mx.y-12),kBodyBorder,30.0f,0,2.0f);
+  d->AddRectFilled(ImVec2(mn.x+S(96),mn.y+S(96)),ImVec2(mx.x-S(96),mn.y+S(178)),kBodyTop,S(34));
+  d->AddLine(ImVec2(mn.x+S(142),mn.y+S(112)),ImVec2(mx.x-S(142),mn.y+S(112)),IM_COL32(0xFF,0xFF,0xFF,0x10),S(1.5f));
+  d->AddRect(ImVec2(mn.x+S(24),mn.y),ImVec2(mn.x+S(324),mn.y+S(108)),kBodyBorder,S(30),0,S(2));
+  d->AddRect(ImVec2(mx.x-S(324),mn.y),ImVec2(mx.x-S(24),mn.y+S(108)),kBodyBorder,S(30),0,S(2));
+  d->AddRect(ImVec2(mn.x+S(54),mn.y+S(82)),ImVec2(mx.x-S(54),mn.y+S(456)),kBodyBorder,S(70),0,S(2.2f));
+  d->AddCircle(ImVec2(mn.x+S(179),mn.y+S(447)),S(169),kBodyBorder,80,S(2.2f));
+  d->AddCircle(ImVec2(mx.x-S(179),mn.y+S(447)),S(169),kBodyBorder,80,S(2.2f));
+  d->AddRect(ImVec2(mn.x+S(64),mx.y-S(78)),ImVec2(mx.x-S(64),mx.y-S(12)),kBodyBorder,S(30),0,S(2));
 }
 
 void DrawBumper(const char* label, const ImVec2& pos, const ImVec2& sz,
@@ -242,29 +266,84 @@ void DrawCenterButton(const char* label, const ImVec2& pos, const ImVec2& sz,
   ImGui::PopID();
 }
 
-void DrawScreen(ImDrawList* d, const ImVec2& mn, const ImVec2& mx, const GamepadState& st) {
-  d->AddRectFilled(mn,mx,kScrBg,10.0f); d->AddRect(mn,mx,kScrBdr,10.0f,0,2.0f);
-  float pad=12.0f, bar_w=80.0f, bar_h=13.0f;
-  float c1=mn.x+pad, c2=mn.x+(mx.x-mn.x)*0.5f+8.0f, row_h=bar_h+16.0f;
+bool DrawToolbarButton(const char* label, const ImVec2& pos, const ImVec2& sz) {
+  ImGui::SetCursorPos(pos);
+  ImGui::PushID(label);
+  ImGui::InvisibleButton("toolbar_button", sz);
+  const bool hovered = ImGui::IsItemHovered();
+  const bool down = ImGui::IsItemActive() && ImGui::IsMouseDown(ImGuiMouseButton_Left);
+  const bool clicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
+  const ImVec2 mn = ImGui::GetItemRectMin();
+  const ImVec2 mx = ImGui::GetItemRectMax();
+  ImDrawList* d = ImGui::GetWindowDrawList();
+  const ImU32 fill = down ? kBtnActive : hovered ? IM_COL32(0x45,0x4B,0x58,0xFF) : IM_COL32(0x2C,0x31,0x3B,0xF0);
+  const ImU32 border = down ? kBtnActiveBd : IM_COL32(0x4B,0x52,0x60,0xC0);
+  d->AddRectFilled(mn, mx, fill, S(12));
+  d->AddRect(mn, mx, border, S(12), 0, S(1.4f));
+  const ImVec2 ts = ImGui::CalcTextSize(label);
+  d->AddText(ImVec2(mn.x+(sz.x-ts.x)*0.5f, mn.y+(sz.y-ts.y)*0.5f), kTextW, label);
+  ImGui::PopID();
+  return clicked;
+}
+
+void DrawToolbarToggle(const char* label, const ImVec2& pos, bool* value) {
+  const ImVec2 sz(S(114), S(26));
+  ImGui::SetCursorPos(pos);
+  ImGui::PushID(label);
+  ImGui::InvisibleButton("toolbar_toggle", sz);
+  if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+    *value = !*value;
+  }
+  const bool hovered = ImGui::IsItemHovered();
+  const ImVec2 mn = ImGui::GetItemRectMin();
+  const ImVec2 mx = ImGui::GetItemRectMax();
+  ImDrawList* d = ImGui::GetWindowDrawList();
+  d->AddRectFilled(mn, mx, hovered ? IM_COL32(0x32,0x38,0x43,0xFF) : IM_COL32(0x27,0x2C,0x36,0xF0), S(13));
+  d->AddRect(mn, mx, IM_COL32(0x4A,0x51,0x5F,0xC0), S(13), 0, S(1.2f));
+  const ImVec2 dot(mn.x+S(15), mn.y+sz.y*0.5f);
+  d->AddCircleFilled(dot, S(5.5f), *value ? kDotOn : kDotOff, 20);
+  d->AddText(ImVec2(mn.x+S(28), mn.y+(sz.y-ImGui::CalcTextSize(label).y)*0.5f), *value ? kTextW : kTextDim, label);
+  ImGui::PopID();
+}
+
+void DrawScreen(ImDrawList* d, const ImVec2& mn, const ImVec2& mx, const GamepadState& st,
+                const std::string& status, bool status_error) {
+  d->AddRectFilled(ImVec2(mn.x+S(3),mn.y+S(4)),ImVec2(mx.x+S(3),mx.y+S(4)),IM_COL32(0,0,0,0x35),S(12));
+  d->AddRectFilled(mn,mx,kScrBg,S(11));
+  d->AddRectFilled(mn,ImVec2(mx.x,mn.y+S(24)),kScrBand,S(11),ImDrawFlags_RoundCornersTop);
+  d->AddRect(mn,mx,kScrBdr,S(11),0,S(2));
+  d->AddText(ImVec2(mn.x+S(12),mn.y+S(5)),kTextScrD,"VIRTUAL PAD");
+  d->AddCircleFilled(ImVec2(mx.x-S(16),mn.y+S(12)),S(4.5f),status_error?IM_COL32(0xFF,0x70,0x70,0xFF):kDotOn,20);
+
+  float pad=S(11), bar_w=S(74), bar_h=S(10);
+  float c1=mn.x+pad, c2=mn.x+(mx.x-mn.x)*0.5f+S(9), row_h=S(22);
   auto AxisRow=[&](float y, bool left, const char* name, float val){
     char buf[16]; std::snprintf(buf,sizeof(buf),"%s %+6.2f",name,val);
     float cx=left?c1:c2; d->AddText(ImVec2(cx,y),kTextScr,buf);
-    float by=y+14.0f; d->AddRectFilled(ImVec2(cx,by),ImVec2(cx+bar_w,by+bar_h),kBarBg,3.0f);
-    float mid=cx+bar_w*0.5f; d->AddLine(ImVec2(mid,by+1),ImVec2(mid,by+bar_h-1),kBarCtr,1.0f);
+    float by=y+S(13); d->AddRectFilled(ImVec2(cx,by),ImVec2(cx+bar_w,by+bar_h),kBarBg,S(3));
+    float mid=cx+bar_w*0.5f; d->AddLine(ImVec2(mid,by+1),ImVec2(mid,by+bar_h-1),kBarCtr,S(1));
     float fill=std::abs(val)*bar_w*0.5f;
-    if(fill>1.0f){float fx=(val>0)?mid:mid-fill; d->AddRectFilled(ImVec2(fx,by+2),ImVec2(fx+fill,by+bar_h-2),kBarFill,3.0f);}
+    if(fill>1.0f){float fx=(val>0)?mid:mid-fill; d->AddRectFilled(ImVec2(fx,by+S(2)),ImVec2(fx+fill,by+bar_h-S(2)),kBarFill,S(3));}
   };
-  float y0=mn.y+6.0f;
+  float y0=mn.y+S(30);
   AxisRow(y0,true,"LX",st.lx); AxisRow(y0,false,"LY",st.ly);
   AxisRow(y0+row_h,true,"RX",st.rx); AxisRow(y0+row_h,false,"RY",st.ry);
   AxisRow(y0+row_h*2,true,"LT",st.lt); AxisRow(y0+row_h*2,false,"RT",st.rt);
-  float by=mn.y+row_h*3+8.0f;
+  float by=mn.y+S(96);
   struct{const char* n;bool v;}btns[]={{"A",st.a},{"B",st.b},{"X",st.x},{"Y",st.y},{"LB",st.lb},{"RB",st.rb},{"U",st.dpad_up},{"D",st.dpad_down},{"L",st.dpad_left},{"R",st.dpad_right}};
   float bx=mn.x+pad;
-  for(auto& b:btns){const ImVec2 ns=ImGui::CalcTextSize(b.n); float nw=ns.x+4.0f; if(bx+nw+14>mx.x-pad)break;
-    d->AddCircleFilled(ImVec2(bx+4,by+8),5.0f,b.v?kDotOn:kDotOff);
-    d->AddText(ImVec2(bx+13,by+1),b.v?kTextScr:kTextScrD,b.n); bx+=nw+22.0f;
+  for(auto& b:btns){const ImVec2 ns=ImGui::CalcTextSize(b.n); float nw=ns.x+S(4); if(bx+nw+S(14)>mx.x-pad)break;
+    d->AddCircleFilled(ImVec2(bx+S(4),by+S(8)),S(4.4f),b.v?kDotOn:kDotOff);
+    d->AddText(ImVec2(bx+S(13),by+S(1)),b.v?kTextScr:kTextScrD,b.n); bx+=nw+S(20);
   }
+  std::string line = "STATUS " + status;
+  const ImVec2 ss=ImGui::CalcTextSize(line.c_str());
+  const float pill_w=std::min(mx.x-mn.x-S(20), ss.x+S(20));
+  const ImVec2 pmn(mx.x-pill_w-S(10), mx.y-S(24));
+  const ImVec2 pmx(mx.x-S(10), mx.y-S(7));
+  d->AddRectFilled(pmn,pmx,status_error?IM_COL32(0x48,0x22,0x2A,0xFF):IM_COL32(0x1C,0x35,0x2A,0xFF),S(8));
+  d->AddRect(pmn,pmx,status_error?IM_COL32(0xFF,0x70,0x70,0x90):IM_COL32(0x4A,0xDE,0x80,0x90),S(8),0,S(1));
+  d->AddText(ImVec2(pmn.x+S(10),pmn.y+(pmx.y-pmn.y-ss.y)*0.5f),status_error?IM_COL32(0xFF,0x8A,0x8A,0xFF):kTextScr,line.c_str());
 }
 
 void DrawStick(const char* label, const char* click_name,
@@ -377,6 +456,8 @@ void ResetState(GamepadState* st) { *st = GamepadState{}; }
 }  // namespace
 
 int main(int, char**) {
+  setenv("XDG_CACHE_HOME", "/tmp", 0);
+
   if(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_TIMER|SDL_INIT_GAMECONTROLLER)!=0){std::fprintf(stderr,"SDL init: %s\n",SDL_GetError());return 1;}
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS,0);
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,SDL_GL_CONTEXT_PROFILE_CORE);
@@ -420,7 +501,7 @@ int main(int, char**) {
     ImGui::Begin("##main",nullptr,ImGuiWindowFlags_NoTitleBar|ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoSavedSettings|ImGuiWindowFlags_NoBackground|ImGuiWindowFlags_NoBringToFrontOnFocus);
     ImDrawList* draw=ImGui::GetWindowDrawList();
     DrawBody(draw,body_min,body_max);
-    {float cb_x=body_max.x-48.0f,cb_y=body_min.y+18.0f; ImGui::SetCursorPos(ImVec2(cb_x,cb_y));
+    {float cb_x=body_max.x-48.0f*kScale,cb_y=body_min.y+18.0f*kScale; ImGui::SetCursorPos(ImVec2(cb_x,cb_y));
       ImGui::PushID("close");ImGui::InvisibleButton("x",ImVec2(18,18));
       bool hv=ImGui::IsItemHovered(),cl=ImGui::IsItemClicked();
       const ImVec2 cmn=ImGui::GetItemRectMin(),cmx=ImGui::GetItemRectMax();
@@ -429,32 +510,42 @@ int main(int, char**) {
       draw->AddLine(ImVec2(ccx-chh,ccy-chh),ImVec2(ccx+chh,ccy+chh),kTextW,2.0f);
       draw->AddLine(ImVec2(ccx+chh,ccy-chh),ImVec2(ccx-chh,ccy+chh),kTextW,2.0f);
       ImGui::PopID();if(cl)done=true;}
-    float bw=152.0f,bh=36.0f;
-    DrawBumper("LB",ImVec2(body_min.x+32,body_min.y+8),ImVec2(bw,bh),&state.lb,&ui.lb,ui.hold_mode);
-    DrawBumper("RB",ImVec2(body_max.x-bw-32,body_min.y+8),ImVec2(bw,bh),&state.rb,&ui.rb,ui.hold_mode);
-    float tw=152.0f,th=28.0f;
-    DrawTriggerBar("LT",ImVec2(body_min.x+32,body_min.y+48),ImVec2(tw,th),&state.lt);
-    DrawTriggerBar("RT",ImVec2(body_max.x-tw-32,body_min.y+48),ImVec2(tw,th),&state.rt);
+    float bw=152.0f*kScale,bh=36.0f*kScale;
+    DrawBumper("LB",ImVec2(body_min.x+32*kScale,body_min.y+8*kScale),ImVec2(bw,bh),&state.lb,&ui.lb,ui.hold_mode);
+    DrawBumper("RB",ImVec2(body_max.x-bw-32*kScale,body_min.y+8*kScale),ImVec2(bw,bh),&state.rb,&ui.rb,ui.hold_mode);
+    float tw=152.0f*kScale,th=28.0f*kScale;
+    DrawTriggerBar("LT",ImVec2(body_min.x+32*kScale,body_min.y+48*kScale),ImVec2(tw,th),&state.lt);
+    DrawTriggerBar("RT",ImVec2(body_max.x-tw-32*kScale,body_min.y+48*kScale),ImVec2(tw,th),&state.rt);
     float ctx=body_min.x+kBW*0.5f;
-    DrawCenterButton("Back",ImVec2(ctx-100,body_min.y+42),ImVec2(58,32),&state.back,&ui.back,ui.hold_mode);
-    DrawCenterButton("Guide",ImVec2(ctx-35,body_min.y+42),ImVec2(70,32),&state.guide,&ui.guide,ui.hold_mode);
-    DrawCenterButton("Start",ImVec2(ctx+42,body_min.y+42),ImVec2(58,32),&state.start,&ui.start,ui.hold_mode);
-    {float sx=body_min.x+(kBW-kSW)*0.5f,sy=body_min.y+95.0f;
-      DrawScreen(draw,ImVec2(sx,sy),ImVec2(sx+kSW,sy+kSH),state);}
+    DrawCenterButton("Back",ImVec2(ctx-100*kScale,body_min.y+42*kScale),ImVec2(58*kScale,32*kScale),&state.back,&ui.back,ui.hold_mode);
+    DrawCenterButton("Guide",ImVec2(ctx-35*kScale,body_min.y+42*kScale),ImVec2(70*kScale,32*kScale),&state.guide,&ui.guide,ui.hold_mode);
+    DrawCenterButton("Start",ImVec2(ctx+42*kScale,body_min.y+42*kScale),ImVec2(58*kScale,32*kScale),&state.start,&ui.start,ui.hold_mode);
+    const bool status_error=!last_error.empty();
+    const std::string status_text=ScreenStatusText(last_error,device.ready());
+    {float sx=body_min.x+(kBW-kSW)*0.5f,sy=body_min.y+95.0f*kScale;
+      DrawScreen(draw,ImVec2(sx,sy),ImVec2(sx+kSW,sy+kSH),state,status_text,status_error);}
     DrawStick("Left Stick","LS",ImVec2(body_min.x+kLC,body_min.y+kUY),kStR,&state.lx,&state.ly,&state.ls,&ui.left_stick,&ui.ls,ui.hold_mode);
     DrawStick("Right Stick","RS",ImVec2(body_min.x+kRC,body_min.y+kLY),kStR,&state.rx,&state.ry,&state.rs,&ui.right_stick,&ui.rs,ui.hold_mode);
     ImVec2 dc(body_min.x+kLC,body_min.y+kLY);
     DrawDpad(dc,kDA,&state.dpad_up,&state.dpad_down,&state.dpad_left,&state.dpad_right,&ui.dpad_up,&ui.dpad_down,&ui.dpad_left,&ui.dpad_right,ui.hold_mode);
-    {const char* dl="D-Pad";ImVec2 dls=ImGui::CalcTextSize(dl);draw->AddText(ImVec2(dc.x-dls.x*0.5f,dc.y+kDA*1.5f+26),kTextDim,dl);}
+    {const char* dl="D-Pad";ImVec2 dls=ImGui::CalcTextSize(dl);draw->AddText(ImVec2(dc.x-dls.x*0.5f,dc.y+kDA*1.5f+26*kScale),kTextDim,dl);}
     ImVec2 fc(body_min.x+kRC,body_min.y+kUY);
     DrawFaceButtons(fc,kFR,kFS,&state.a,&state.b,&state.x,&state.y,&ui.a,&ui.b,&ui.x,&ui.y,ui.hold_mode);
-    {const char* al="ABXY";ImVec2 als=ImGui::CalcTextSize(al);draw->AddText(ImVec2(fc.x-als.x*0.5f,fc.y+kFS+kFR+22),kTextDim,al);}
-    float sy=body_max.y-42.0f; ImGui::SetCursorPos(ImVec2(body_min.x+82,sy));
-    if(ImGui::SmallButton("Reconnect")){dev_ok=device.Create();last_error=dev_ok?"":device.error();}
-    ImGui::SameLine(); if(ImGui::SmallButton("Reset")){ui=UiMemory{};ResetState(&state);if(device.ready())device.SendState(state);}
-    ImGui::SameLine(); ImGui::Checkbox("Hold Mode",&ui.hold_mode);
-    ImGui::SameLine(0,16); ImGui::TextColored(ImVec4(0.55f,0.58f,0.65f,1.f),"Status:%s  L-Lock:%s  R-Lock:%s",device.ready()?"+":"-",ui.left_stick.locked?"ON":"OFF",ui.right_stick.locked?"ON":"OFF");
-    if(!last_error.empty())ImGui::TextColored(ImVec4(1,0.4f,0.4f,1),"Error: %s",last_error.c_str());
+    {const char* al="ABXY";ImVec2 als=ImGui::CalcTextSize(al);draw->AddText(ImVec2(fc.x-als.x*0.5f,fc.y+kFS+kFR+22*kScale),kTextDim,al);}
+    const float ty=body_max.y-S(48);
+    if(DrawToolbarButton("Reconnect",ImVec2(body_min.x+S(86),ty),ImVec2(S(96),S(26)))){
+      dev_ok=device.Create();
+      last_error=dev_ok?"":device.error();
+    }
+    if(DrawToolbarButton("Reset",ImVec2(body_min.x+S(190),ty),ImVec2(S(64),S(26)))){
+      ui=UiMemory{};
+      ResetState(&state);
+      if(device.ready())device.SendState(state);
+    }
+    DrawToolbarToggle("Hold Mode",ImVec2(body_min.x+S(266),ty),&ui.hold_mode);
+    char lock_buf[64];
+    std::snprintf(lock_buf,sizeof(lock_buf),"L-Lock %s   R-Lock %s",ui.left_stick.locked?"ON":"OFF",ui.right_stick.locked?"ON":"OFF");
+    draw->AddText(ImVec2(body_max.x-S(268),ty+S(6)),kTextDim,lock_buf);
     // 右键按住手柄空白区域拖动窗口，左键继续只用于虚拟手柄输入。
     const ImVec2 drag_origin=io.MouseClickedPos[ImGuiMouseButton_Right];
     if(ImGui::IsMouseDragging(ImGuiMouseButton_Right,0.0f)&&

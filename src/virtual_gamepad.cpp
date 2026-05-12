@@ -1,6 +1,7 @@
 #include "virtual_gamepad.h"
 
 #include <linux/uinput.h>
+#include <cerrno>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -8,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <cstdio>
 #include <string>
 
 namespace {
@@ -23,6 +25,10 @@ int AxisToShort(float value) {
 int TriggerToByte(float value) {
   value = std::max(0.0f, std::min(1.0f, value));
   return static_cast<int>(std::lround(value * 255.0f));
+}
+
+std::string ErrnoMessage(const std::string& action) {
+  return action + ": " + std::strerror(errno);
 }
 
 }  // namespace
@@ -57,12 +63,12 @@ bool VirtualGamepadDevice::Create() {
     }
   }
   if (fd < 0) {
-    SetError("无法打开 /dev/uinput 或 /dev/input/uinput");
+    SetError(ErrnoMessage("无法打开 /dev/uinput 或 /dev/input/uinput"));
     return false;
   }
 
   auto fail = [&](const std::string& message) {
-    SetError(message);
+    SetError(ErrnoMessage(message));
     ::close(fd);
     fd_ = -1;
     return false;
