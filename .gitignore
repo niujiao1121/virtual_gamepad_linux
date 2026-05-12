@@ -1,0 +1,27 @@
+# Build artifacts
+/build/
+/cmake-build-*/
+
+# Local UI state
+/imgui.ini
+
+# Binary outputs
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.dylib
+*.exe
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+
+# Editor / OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
