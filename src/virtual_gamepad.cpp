@@ -33,7 +33,7 @@ std::string ErrnoMessage(const std::string& action) {
 
 }  // namespace
 
-VirtualGamepadDevice::VirtualGamepadDevice() : fd_(-1) {}
+VirtualGamepadDevice::VirtualGamepadDevice() : fd_(-1), last_errno_(0) {}
 
 VirtualGamepadDevice::~VirtualGamepadDevice() {
   Destroy();
@@ -47,6 +47,18 @@ const std::string& VirtualGamepadDevice::error() const {
   return error_;
 }
 
+const std::string& VirtualGamepadDevice::device_path() const {
+  return path_;
+}
+
+int VirtualGamepadDevice::fd() const {
+  return fd_;
+}
+
+int VirtualGamepadDevice::last_errno() const {
+  return last_errno_;
+}
+
 void VirtualGamepadDevice::SetError(const std::string& message) {
   error_ = message;
 }
@@ -54,29 +66,41 @@ void VirtualGamepadDevice::SetError(const std::string& message) {
 bool VirtualGamepadDevice::Create() {
   Destroy();
   error_.clear();
+  path_.clear();
+  last_errno_ = 0;
 
+  // 依次尝试两个候选路径，命中即记录到 path_ 供 UI 展示。
   int fd = -1;
+  int open_errno = 0;
   for (const char* path : kUinputPaths) {
     fd = ::open(path, O_WRONLY | O_NONBLOCK);
     if (fd >= 0) {
+      path_ = path;
       break;
+    }
+    if (open_errno == 0) {
+      open_errno = errno;  // 记下首次失败的 errno
     }
   }
   if (fd < 0) {
-    SetError(ErrnoMessage("无法打开 /dev/uinput 或 /dev/input/uinput"));
+    errno = open_errno;
+    last_errno_ = open_errno;
+    SetError(ErrnoMessage("open /dev/uinput, /dev/input/uinput"));
     return false;
   }
 
   auto fail = [&](const std::string& message) {
+    last_errno_ = errno;
     SetError(ErrnoMessage(message));
     ::close(fd);
     fd_ = -1;
+    path_.clear();
     return false;
   };
 
-  if (ioctl(fd, UI_SET_EVBIT, EV_KEY) < 0) return fail("设置 EV_KEY 失败");
-  if (ioctl(fd, UI_SET_EVBIT, EV_ABS) < 0) return fail("设置 EV_ABS 失败");
-  if (ioctl(fd, UI_SET_EVBIT, EV_SYN) < 0) return fail("设置 EV_SYN 失败");
+  if (ioctl(fd, UI_SET_EVBIT, EV_KEY) < 0) return fail("UI_SET_EVBIT EV_KEY");
+  if (ioctl(fd, UI_SET_EVBIT, EV_ABS) < 0) return fail("UI_SET_EVBIT EV_ABS");
+  if (ioctl(fd, UI_SET_EVBIT, EV_SYN) < 0) return fail("UI_SET_EVBIT EV_SYN");
 
   const unsigned short keys[] = {
       BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST,
@@ -85,7 +109,7 @@ bool VirtualGamepadDevice::Create() {
   };
   for (unsigned short key : keys) {
     if (ioctl(fd, UI_SET_KEYBIT, key) < 0) {
-      return fail("设置按键能力失败");
+      return fail("UI_SET_KEYBIT");
     }
   }
 
@@ -94,7 +118,7 @@ bool VirtualGamepadDevice::Create() {
   };
   for (unsigned short abs_code : abs_axes) {
     if (ioctl(fd, UI_SET_ABSBIT, abs_code) < 0) {
-      return fail("设置轴能力失败");
+      return fail("UI_SET_ABSBIT");
     }
   }
 
@@ -102,8 +126,8 @@ bool VirtualGamepadDevice::Create() {
   std::memset(&uidev, 0, sizeof(uidev));
   std::snprintf(uidev.name, UINPUT_MAX_NAME_SIZE, "%s", kDeviceName);
   uidev.id.bustype = BUS_USB;
-  uidev.id.vendor = 0x045e;
-  uidev.id.product = 0x028e;
+  uidev.id.vendor = kVendorId;
+  uidev.id.product = kProductId;
   uidev.id.version = 1;
 
   auto set_abs = [&](unsigned short code, int min, int max, int flat = 0) {
@@ -122,10 +146,10 @@ bool VirtualGamepadDevice::Create() {
   set_abs(ABS_HAT0Y, -1, 1, 0);
 
   if (write(fd, &uidev, sizeof(uidev)) < 0) {
-    return fail("写入 uinput_user_dev 失败");
+    return fail("write uinput_user_dev");
   }
   if (ioctl(fd, UI_DEV_CREATE) < 0) {
-    return fail("创建虚拟手柄失败");
+    return fail("UI_DEV_CREATE");
   }
 
   fd_ = fd;
@@ -138,6 +162,7 @@ void VirtualGamepadDevice::Destroy() {
     ::close(fd_);
     fd_ = -1;
   }
+  path_.clear();
 }
 
 bool VirtualGamepadDevice::SendKey(unsigned short code, bool down) {
@@ -169,7 +194,7 @@ bool VirtualGamepadDevice::Sync() {
 
 bool VirtualGamepadDevice::SendState(const GamepadState& state) {
   if (!ready()) {
-    SetError("虚拟手柄尚未创建");
+    SetError("device not ready");
     return false;
   }
 
@@ -196,7 +221,8 @@ bool VirtualGamepadDevice::SendState(const GamepadState& state) {
       Sync();
 
   if (!ok) {
-    SetError("发送虚拟手柄事件失败");
+    last_errno_ = errno;
+    SetError(ErrnoMessage("write input_event"));
   }
   return ok;
 }

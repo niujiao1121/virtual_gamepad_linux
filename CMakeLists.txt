@@ -41,13 +41,10 @@ target_link_directories(virtual_gamepad_linux PRIVATE
   ${IMGUI_LIBRARY_DIRS}
 )
 
-find_package(X11 REQUIRED)
 target_link_libraries(virtual_gamepad_linux PRIVATE
   ${SDL2_LIBRARIES}
   ${IMGUI_LIBRARIES}
   OpenGL::GL
-  X11::X11
-  X11::Xext
   dl
 )
 
@@ -56,4 +53,3 @@ target_compile_options(virtual_gamepad_linux PRIVATE
   -Wextra
   -Wpedantic
 )
-
